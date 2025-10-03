@@ -1,5 +1,7 @@
 import json
+import os
 import sys
+from itertools import combinations, product
 
 def parse_json(filename):
     """
@@ -74,3 +76,49 @@ def parse_json(filename):
         raise RuntimeError(f"No valid items found in {filename}")
     
     return items_dict
+
+def load_listings():
+    listings_path = os.path.join(os.path.dirname(__file__), "listings.json")
+    with open(listings_path, "r") as f:
+        return json.load(f)
+
+def find_locations(vehicle_requirements):
+    listings = load_listings()
+
+    # Group listings by location_id
+    locations = {}
+    for listing in listings:
+        loc_id = listing["location_id"]
+        locations.setdefault(loc_id, []).append(listing)
+
+    results = []
+
+    for loc_id, loc_listings in locations.items():
+        vehicle_options = []
+        for vehicle in vehicle_requirements:
+            length = vehicle["length"]
+            quantity = vehicle["quantity"]
+            suitable = [l for l in loc_listings if l["length"] >= length and l["width"] >= 10]
+            if len(suitable) < quantity:
+                break  
+            vehicle_options.append(list(combinations(suitable, quantity)))
+        else:
+            cheapest = None
+            cheapest_ids = None
+            for combo in product(*vehicle_options):
+                flat = [item for group in combo for item in group]
+                ids = [l["id"] for l in flat]
+                if len(set(ids)) != len(ids):
+                    continue  
+                total_price = sum(l["price_in_cents"] for l in flat)
+                if cheapest is None or total_price < cheapest:
+                    cheapest = total_price
+                    cheapest_ids = ids
+            if cheapest is not None:
+                results.append({
+                    "location_id": loc_id,
+                    "listing_ids": cheapest_ids,
+                    "total_price_in_cents": cheapest
+                })
+    results.sort(key=lambda x: x["total_price_in_cents"])
+    return results
